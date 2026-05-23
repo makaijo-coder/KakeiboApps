@@ -120,6 +120,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
 .hint { font-size: 12px; color: var(--text3); margin-bottom: 10px; line-height: 1.6; }
 .setting-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 0.5px solid var(--border); }
 .setting-row:last-child { border-bottom: none; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; display: flex; align-items: flex-end; }
+.modal { background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); width: 100%; max-height: 85vh; overflow-y: auto; }
+.modal-title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 16px; text-align: center; }
+.modal-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/tabler-icons.min.css">
 </head>
@@ -244,6 +248,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
         <div id="wallet-list"></div>
       </div>
       <div class="card">
+        <div class="card-title">カテゴリ管理</div>
+        <div id="cat-list-settings"></div>
+        <div style="margin-top:14px;">
+          <div class="card-title">カテゴリを追加</div>
+          <div class="row2">
+            <input type="text" class="fi" id="c-emoji" placeholder="絵文字（例：🏠）" style="max-width:80px;" />
+            <input type="text" class="fi" id="c-label" placeholder="名前（例：家賃）" />
+          </div>
+          <div class="row2">
+            <select class="fi" id="c-type">
+              <option value="expense">支出カテゴリ</option>
+              <option value="income">収入カテゴリ</option>
+            </select>
+            <input type="color" class="fi" id="c-color" value="#888780" style="height:44px;padding:4px;" />
+          </div>
+          <button class="add-btn outline" onclick="addCat()">カテゴリを追加</button>
+        </div>
+      </div>
+      <div class="card">
         <div class="card-title">ウォレットを追加</div>
         <div class="row2">
           <input type="text" class="fi" id="w-name" placeholder="名前（例：楽天銀行）" />
@@ -272,9 +295,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
   </div>
 </div>
 
+<!-- 編集モーダル -->
+<div class="modal-overlay" id="edit-modal" style="display:none;" onclick="if(event.target===this)closeEditModal()">
+  <div class="modal">
+    <div class="modal-title">記録を編集</div>
+    <input type="text" class="fi" id="edit-name" placeholder="内容" />
+    <input type="number" class="fi" id="edit-amount" placeholder="金額（円）" min="0" />
+    <select class="fi" id="edit-cat"></select>
+    <select class="fi" id="edit-wallet"></select>
+    <input type="date" class="fi" id="edit-date" />
+    <div class="modal-btns">
+      <button class="add-btn outline" onclick="closeEditModal()">キャンセル</button>
+      <button class="add-btn" onclick="saveEdit()">保存する</button>
+    </div>
+  </div>
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
-const CATS={
+const DEFAULT_CATS={
   expense:[
     {id:'food',label:'食費',color:'#D85A30',emoji:'🍚'},
     {id:'transport',label:'交通費',color:'#378ADD',emoji:'🚃'},
@@ -293,6 +331,8 @@ const CATS={
     {id:'other_inc',label:'その他収入',color:'#888780',emoji:'📥'},
   ]
 };
+let CATS={expense:[...DEFAULT_CATS.expense],income:[...DEFAULT_CATS.income]};
+try{const sc=JSON.parse(localStorage.getItem('kk_cats')||'null');if(sc)CATS=sc;}catch(e){}
 const ALL_CATS=[...CATS.expense,...CATS.income];
 const TYPE_META={cash:{icon:'💴',label:'現金'},card:{icon:'💳',label:'クレカード'},debit:{icon:'💳',label:'デビット'},qr:{icon:'📱',label:'QR決済'},ic:{icon:'🚃',label:'IC/交通'},bank:{icon:'🏦',label:'銀行口座'}};
 const TYPE_ORDER=['bank','card','debit','qr','ic','cash'];
@@ -345,7 +385,7 @@ function changePw(){
 
 const GAS_URL='https://script.google.com/macros/s/AKfycbx_OV4cNaUOmxOid-y7wb8XFY983DkvTDTk3TPvVQ-n48V9FaR7odD2jmGjqEeN_E9n/exec';
 function save(){
-  try{localStorage.setItem('kk_txs',JSON.stringify(txs));localStorage.setItem('kk_wallets',JSON.stringify(wallets));localStorage.setItem('kk_budgets',JSON.stringify(budgets));}catch(e){}
+  try{localStorage.setItem('kk_txs',JSON.stringify(txs));localStorage.setItem('kk_wallets',JSON.stringify(wallets));localStorage.setItem('kk_budgets',JSON.stringify(budgets));localStorage.setItem('kk_cats',JSON.stringify(CATS));}catch(e){}
   syncToSheet();
 }
 function syncToSheet(){
@@ -468,6 +508,34 @@ function addNisa(){
   save();document.getElementById('n-name').value='';document.getElementById('n-amount').value='';
   renderAll();alert('登録しました！');
 }
+let editingId=null;
+function openEditModal(id){
+  const t=txs.find(x=>x.id===id);if(!t)return;
+  editingId=id;
+  document.getElementById('edit-name').value=t.name||'';
+  document.getElementById('edit-amount').value=t.amount||'';
+  document.getElementById('edit-date').value=t.date||'';
+  const catSel=document.getElementById('edit-cat');
+  catSel.innerHTML=CATS[t.type].map(c=>`<option value="${c.id}" ${c.id===t.cat?'selected':''}>${c.emoji} ${c.label}</option>`).join('');
+  const wSel=document.getElementById('edit-wallet');
+  wSel.innerHTML=wallets.map(w=>`<option value="${w.id}" ${w.id==t.walletId?'selected':''}>${wIcon(w)} ${w.name}</option>`).join('');
+  document.getElementById('edit-modal').style.display='flex';
+}
+function closeEditModal(){
+  document.getElementById('edit-modal').style.display='none';
+  editingId=null;
+}
+function saveEdit(){
+  const t=txs.find(x=>x.id===editingId);if(!t)return;
+  const name=document.getElementById('edit-name').value.trim();
+  const amount=parseFloat(document.getElementById('edit-amount').value);
+  const cat=document.getElementById('edit-cat').value;
+  const walletId=parseInt(document.getElementById('edit-wallet').value);
+  const date=document.getElementById('edit-date').value;
+  if(!name||!amount||amount<=0||!date||!walletId){alert('全項目を入力してください');return;}
+  t.name=name;t.amount=amount;t.cat=cat;t.walletId=walletId;t.date=date;
+  save();closeEditModal();renderAll();
+}
 function deleteTx(id){if(!confirm('削除しますか？'))return;txs=txs.filter(t=>t.id!==id);save();renderAll();}
 function addWallet(){
   const name=document.getElementById('w-name').value.trim();
@@ -477,6 +545,41 @@ function addWallet(){
   wallets.push({id:Date.now(),name,type,init});
   save();document.getElementById('w-name').value='';document.getElementById('w-init').value='';
   renderAll();
+}
+function addCat(){
+  const emoji=document.getElementById('c-emoji').value.trim()||'📌';
+  const label=document.getElementById('c-label').value.trim();
+  const type=document.getElementById('c-type').value;
+  const color=document.getElementById('c-color').value;
+  if(!label){alert('名前を入力してください');return;}
+  const id='custom_'+Date.now();
+  CATS[type].push({id,label,color,emoji});
+  save();
+  document.getElementById('c-emoji').value='';
+  document.getElementById('c-label').value='';
+  renderAll();
+}
+function deleteCat(type,id){
+  const fixed=['tatekae','tatekae_r'];
+  if(fixed.includes(id)){alert('このカテゴリは削除できません');return;}
+  const count=txs.filter(t=>t.cat===id).length;
+  const catName=CATS[type].find(c=>c.id===id)?.label||'このカテゴリ';
+  const msg=count>0
+    ?`「${catName}」には${count}件の記録があります。\n削除すると過去の記録のカテゴリ表示に影響します。\n本当に削除しますか？`
+    :`「${catName}」を削除しますか？`;
+  if(!confirm(msg))return;
+  CATS[type]=CATS[type].filter(c=>c.id!==id);
+  save();renderAll();
+}
+function renderCatSettings(){
+  const el=document.getElementById('cat-list-settings');if(!el)return;
+  let html='';
+  ['expense','income'].forEach(type=>{
+    const label=type==='expense'?'支出カテゴリ':'収入カテゴリ';
+    html+=`<div class="grp-label">${label}</div>`;
+    html+=CATS[type].map(c=>`<div class="setting-row"><span style="font-size:16px;">${c.emoji}</span><span style="flex:1;font-size:14px;margin-left:6px;">${c.label}</span><button class="tx-del" onclick="deleteCat('${type}','${c.id}')">×</button></div>`).join('');
+  });
+  el.innerHTML=html;
 }
 function updateWalletInit(id,val){
   const w=walletById(id);if(!w)return;
@@ -516,7 +619,7 @@ function renderList(){
     else if(t.type==='transfer'){const fw=walletById(t.fromId),tw=walletById(t.toId);icon='🔄';name=t.note||'送金';sub=`${t.date.slice(5)} · ${fw?fw.name:'?'} → ${tw?tw.name:'?'}`;amtStr=fmt(t.amount);col='var(--info)';tag='<span class="tag tag-t">送金</span>';}
     else if(t.type==='tatekae'){icon='🤝';name=t.name;sub=`${t.date.slice(5)} · 総額${fmt(t.totalAmount)} 自己${fmt(t.selfAmount)}`;amtStr=`-${fmt(t.totalAmount)}`;col='var(--warning)';tag='<span class="tag tag-b">立替</span>';}
     else if(t.type==='nisa'){icon='📈';name=t.name;sub=`${t.date.slice(5)} · NISA積立`;amtStr=`-${fmt(t.amount)}`;col='#1D6FA8';tag='<span class="tag tag-n">NISA</span>';}
-    return `<li class="tx-item"><div class="tx-icon">${icon}</div><div class="tx-info"><div class="tx-name">${name}${tag}</div><div class="tx-sub">${sub}</div></div><div class="tx-right"><div class="tx-amt" style="color:${col}">${amtStr}</div><div class="tx-wlt">${wName}</div></div><button class="tx-del" onclick="deleteTx(${t.id})">×</button></li>`;
+    const canEdit=(t.type==='expense'||t.type==='income'); return `<li class="tx-item"><div class="tx-icon">${icon}</div><div class="tx-info"><div class="tx-name">${name}${tag}</div><div class="tx-sub">${sub}</div></div><div class="tx-right"><div class="tx-amt" style="color:${col}">${amtStr}</div><div class="tx-wlt">${wName}</div></div>${canEdit?`<button class="tx-del" onclick="openEditModal(${t.id})" style="color:var(--info);">✎</button>`:''}<button class="tx-del" onclick="deleteTx(${t.id})">×</button></li>`;
   }).join('');
 }
 function renderGraphSummary(){
@@ -576,7 +679,7 @@ function renderMonthLabels(){
 function renderAll(){
   renderMonthLabels();renderWallets();renderList();
   renderGraphSummary();renderCatChart();renderMonthChart();
-  renderBudget();renderWalletSettings();refreshSelects();
+  renderBudget();renderWalletSettings();renderCatSettings();refreshSelects();
 }
 function switchTab(tab,btn){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
