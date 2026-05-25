@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>リセットツール</title>
+<style>
+body { font-family: -apple-system, sans-serif; padding: 2rem; background: #f7f7f5; }
+button { width: 100%; padding: 16px; font-size: 16px; border: none; border-radius: 12px; cursor: pointer; margin-bottom: 12px; }
+.danger { background: #D85A30; color: white; }
+.safe { background: #1D9E75; color: white; }
+.info { background: #378ADD; color: white; }
+p { font-size: 13px; color: #666; margin-bottom: 20px; }
+h2 { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<h2>🛠 リセットツール</h2>
+<p>問題が発生したときに使用してください</p>
+
+<button class="safe" onclick="resetCats()">🔄 カテゴリをデフォルトに戻す</button>
+<button class="danger" onclick="resetPw()">🔑 パスワードをリセット（初期値:1234）</button>
+<button class="info" onclick="showData()">📋 現在のデータを確認</button>
+
+<pre id="output" style="font-size:11px;background:#fff;padding:12px;border-radius:8px;overflow:auto;margin-top:12px;"></pre>
+
+<script>
+const DEFAULT_CATS = {
+  expense: [
+    {id:'food',label:'食費',color:'#D85A30',emoji:'🍚'},
+    {id:'transport',label:'交通費',color:'#378ADD',emoji:'🚃'},
+    {id:'utility',label:'光熱費',color:'#EF9F27',emoji:'💡'},
+    {id:'oshi',label:'推し',color:'#D4537E',emoji:'🌟'},
+    {id:'entertainment',label:'娯楽',color:'#7F77DD',emoji:'🎮'},
+    {id:'health',label:'医療',color:'#1D9E75',emoji:'💊'},
+    {id:'clothing',label:'衣類',color:'#BA7517',emoji:'👗'},
+    {id:'tatekae',label:'立替払い',color:'#888780',emoji:'🤝'},
+    {id:'other_exp',label:'その他',color:'#5F5E5A',emoji:'📦'},
+  ],
+  income: [
+    {id:'salary',label:'給与',color:'#1D9E75',emoji:'💰'},
+    {id:'bonus',label:'ボーナス',color:'#639922',emoji:'🎁'},
+    {id:'tatekae_r',label:'立替回収',color:'#378ADD',emoji:'↩️'},
+    {id:'other_inc',label:'その他収入',color:'#888780',emoji:'📥'},
+  ]
+};
+
+function resetCats() {
+  localStorage.setItem('kk_cats', JSON.stringify(DEFAULT_CATS));
+  alert('カテゴリをデフォルトに戻しました！\n家計簿アプリを開き直してください。');
+}
+function resetPw() {
+  localStorage.removeItem('kk_pw');
+  alert('パスワードをリセットしました！\n初期パスワード「1234」でログインしてください。');
+}
+function showData() {
+  const cats = localStorage.getItem('kk_cats');
+  const txs = localStorage.getItem('kk_txs');
+  document.getElementById('output').textContent =
+    'カテゴリ: ' + (cats ? JSON.parse(cats).expense.length + '件' : 'なし') + '\n' +
+    '取引: ' + (txs ? JSON.parse(txs).length + '件' : 'なし');
+}
+</script>
+</body>
+</html>
